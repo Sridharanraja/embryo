@@ -59,7 +59,7 @@ def parse_label(label: str):
 
 
 def run_inference(model, img_path):
-    results = model(img_path, conf=0.25, verbose=False)
+    results = model(img_path, conf=0.50, verbose=False)
     output = []
 
     for r in results:
