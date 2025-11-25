@@ -299,7 +299,7 @@ def crop_embryo(image_path, bbox):
 # 5. STREAMLIT UI
 # -----------------------------------------------------------
 st.set_page_config(page_title="Embryo Grading System", layout="wide")
-st.title("🧬 Cow Embryo Grading System (Detection)")
+st.title("🧬 Cow Embryo Grading System")
 
 model = YOLO("./weight/best.pt")   # 👉 detection model
 uploaded_image_path = None
