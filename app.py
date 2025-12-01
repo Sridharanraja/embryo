@@ -301,7 +301,7 @@ def crop_embryo(image_path, bbox):
 st.set_page_config(page_title="Embryo Grading System", layout="wide")
 st.title("🧬 Cow Embryo Grading System")
 
-model = YOLO("./weight/best.pt")   # 👉 detection model
+model = YOLO("./weight/best_500.pt")   # 👉 detection model
 uploaded_image_path = None
 
 uploaded_file = st.file_uploader("Upload embryo microscope image", type=["jpg", "jpeg", "png"])
