@@ -240,50 +240,162 @@ def parse_label(label: str):
 # -----------------------------------------------------------
 # 2. YOLO DETECTION INFERENCE (NO SEGMENTATION)
 # -----------------------------------------------------------
+# def run_inference(model, img_path):
+#     results = model(img_path, conf=0.50, verbose=False)
+#     output = []
+
+#     for r in results:
+#         for box in r.boxes:
+#             cls_id = int(box.cls[0])
+#             label = r.names[cls_id]
+
+#             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+
+#             stage_name, quality_text, category = parse_label(label)
+
+#             output.append({
+#                 "label": label,
+#                 "stage_name": stage_name,
+#                 "quality_text": quality_text,
+#                 "category": category,
+#                 "bbox": [x1, y1, x2, y2]
+#             })
+
+#     return output
 def run_inference(model, img_path):
-    results = model(img_path, conf=0.50, verbose=False)
+    results = model(img_path, conf=0.50, iou=0.5, verbose=False)
     output = []
 
     for r in results:
-        for box in r.boxes:
-            cls_id = int(box.cls[0])
-            label = r.names[cls_id]
+        boxes = r.boxes
+        names = r.names
 
+        temp = []
+        for box in boxes:
+            cls_id = int(box.cls[0])
+            label = names[cls_id]
+            conf = float(box.conf[0].item())
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 
             stage_name, quality_text, category = parse_label(label)
 
-            output.append({
+            temp.append({
                 "label": label,
+                "confidence": conf,
                 "stage_name": stage_name,
                 "quality_text": quality_text,
                 "category": category,
                 "bbox": [x1, y1, x2, y2]
             })
 
-    return output
+        # -----------------------------------------
+        # APPLY CUSTOM NMS (removes duplicate boxes)
+        # -----------------------------------------
+        final = []
+        removed = set()
 
+        for i in range(len(temp)):
+            if i in removed:
+                continue
+            box1 = temp[i]
+            x1, y1, x2, y2 = box1["bbox"]
+
+            for j in range(i + 1, len(temp)):
+                box2 = temp[j]
+                xx1, yy1, xx2, yy2 = box2["bbox"]
+
+                # Compute IoU
+                inter_x1 = max(x1, xx1)
+                inter_y1 = max(y1, yy1)
+                inter_x2 = min(x2, xx2)
+                inter_y2 = min(y2, yy2)
+
+                inter_area = max(0, inter_x2 - inter_x1) * max(0, inter_y2 - inter_y1)
+                area1 = (x2 - x1) * (y2 - y1)
+                area2 = (xx2 - xx1) * (yy2 - yy1)
+                union_area = area1 + area2 - inter_area
+
+                iou = inter_area / union_area if union_area > 0 else 0
+
+                # If overlapping heavily → keep higher confidence
+                if iou > 0.5:
+                    if box1["confidence"] >= box2["confidence"]:
+                        removed.add(j)
+                    else:
+                        removed.add(i)
+
+            if i not in removed:
+                final.append(box1)
+
+        output.extend(final)
+
+    # Sort by confidence for EB numbering consistency
+    output = sorted(output, key=lambda x: x["confidence"], reverse=True)
+    return output
 
 # -----------------------------------------------------------
 # 3. DRAW DETECTION BOXES ONLY (NO MASKS)
 # -----------------------------------------------------------
+# def draw_boxes(image_path, detections):
+#     img = cv2.imread(image_path)
+
+#     for det in detections:
+#         x1, y1, x2, y2 = det["bbox"]
+#         label = det["label"]
+
+#         # Bounding box
+#         cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+#         # Label text
+#         cv2.putText(img, label, (x1, y1 - 10),
+#                     cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+#                     (0, 255, 0), 2)
+
+#     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
 def draw_boxes(image_path, detections):
     img = cv2.imread(image_path)
 
-    for det in detections:
+    for idx, det in enumerate(detections):
         x1, y1, x2, y2 = det["bbox"]
         label = det["label"]
+        eb_label = f"EB{idx+1} {label}"
 
-        # Bounding box
-        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        # Color rules
+        if label in ["Arrested", "Empty zona", "Unfertilized"]:
+            color = (0, 0, 255)   # RED for non-viable
+        else:
+            color = (0, 255, 0)   # GREEN for viable
 
-        # Label text
-        cv2.putText(img, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7,
-                    (0, 255, 0), 2)
+        # Draw bounding box
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+
+        # ---------------------------------------------
+        # LABEL INSIDE BOX (top-left, non-overlapping)
+        # ---------------------------------------------
+        (tw, th), _ = cv2.getTextSize(eb_label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+
+        # Draw filled label background INSIDE the box
+        cv2.rectangle(
+            img,
+            (x1, y1 + 2),
+            (x1 + tw + 4, y1 + th + 8),
+            color,
+            -1
+        )
+
+        # Text
+        cv2.putText(
+            img,
+            eb_label,
+            (x1 + 2, y1 + th + 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (255, 255, 255),
+            2
+        )
 
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
 
 # -----------------------------------------------------------
 # 4. CROP FUNCTION
